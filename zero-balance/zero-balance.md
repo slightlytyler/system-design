@@ -149,24 +149,29 @@ In the new data flow the upstream gRPC status is mapped to a normalized error co
 
 ![Alt text](./images/new-data-flow.png)
 
-## Edge cases
+#### Addressing additional concerns
 
-There's a lot of edge cases not captured here. What happen when a field has arguments? What happens when a field is aliased? What happens when a field is a list type? The `findErrorMetadata` function gets complicated fast and requires
-significant investigation and a suite of units tests to validate it.
+The new APIs along with the documentation and training we created gave developers all the tools to avoid this problem but it didn't address the systemic problems already in the codebase. To address this we introduced new linting rules that blocked the nullish coalescing to zero.
 
-## Guardrails
+In addition we worked with the design system team to create balance components that encapsulated the logic around showing balances, stale states, and error states, so that individual product teams wouldn't have to reimplement them.
 
-Observability, lint rules, etc
-
-## Wrapping up
-
-So to wrap up we worked with product to understand the problem, designed alternatives, implemented them, and then worked with those times to integrate the solutions, train them on them, and provide ongoing support.
+## Outcomes
 
 The deliverables were:
 
 1. New hooks API for reading error metadata
-2. New design system components for displaying stale balances and errors.
-3. Documentation and training materials
+2. New linting rules that disallow nullish coercion to zero.
+3. New design system components for displaying stale balances and errors.
+4. Documentation and training materials
+
+We were able to systematically eliminate the the zero balance by:
+
+1. Removing nullish coalescing violations as detected by the lint rule.
+2. Migrating surfaces to the new system design component
+
+This was verified by the reduction in incidents and CX tickets. Unfortunately there wasn't a straightforward way to detect this problem via client observability so we used proxy metrics.
+
+We were also to simplify schema design for new use cases due to the new APIs covering most cases.
 
 ## Appendix
 
@@ -356,3 +361,8 @@ function useFragmentWithErrors(fragment, ref) {
   return [getError, data];
 }
 ```
+
+## Edge cases
+
+There's a lot of edge cases not captured here. What happen when a field has arguments? What happens when a field is aliased? What happens when a field is a list type? The `findErrorMetadata` function gets complicated fast and requires
+significant investigation and a suite of units tests to validate it.
