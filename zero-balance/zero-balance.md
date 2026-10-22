@@ -8,7 +8,7 @@ I led the root cause analysis, owned the key design decisions, including how the
 
 ## Problem
 
-When the balance service failed, our nullable GraphQL schema returned a null balance, and client code defaulted that null to zero. Users saw a $0 balance.
+When the balance service failed, Coinbase's nullable GraphQL schema returned a null balance, and client code defaulted that null to zero. Users saw a $0 balance.
 
 In a crypto app, that's alarming. Stolen funds are a real problem in crypto, so a user who sees $0 may think their account was compromised. Coinbase prided itself on being the most trusted name in crypto, so even a momentary $0 balance was a serious trust problem.
 
@@ -55,7 +55,7 @@ Partial rendering creates a hard question for critical UI like the primary balan
 
 ### Existing error handling
 
-Our existing error handling best practices gave teams two options, and neither worked here:
+Coinbase's existing error handling best practices gave teams two options, and neither worked here:
 
 | Option        | How it works                                                  | Why it falls short                                                                       |
 | ------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -112,16 +112,25 @@ My first key decision was to build on metadata the response already contained in
 
 Knowing _that_ a field errored wasn't always enough. In some cases teams needed to know _why_. While investigating existing patterns, we found a lot of repeated schema for handling errors. Some of it modeled errors specific to its domain, but much of it covered the same common cases (service errors, connectivity issues, authorization), and many resolvers were directly mapping gRPC error codes into GraphQL error types.
 
-So we moved that mapping into the GraphQL service's network layer. Errors automatically get a normalized error code based on the upstream gRPC response, and there are methods for setting codes manually in edge cases where there's no direct mapping. The code is included in each error's extensions:
+So we moved that mapping into the GraphQL service's network layer. Errors automatically get a normalized error code based on the upstream gRPC response, and there are methods for setting codes manually in edge cases where there's no direct mapping. Here's an illustrative example of the mapping:
+
+| gRPC status         | GraphQL error code    |
+| ------------------- | --------------------- |
+| `UNAVAILABLE`       | `UNAVAILABLE`         |
+| `DEADLINE_EXCEEDED` | `UNAVAILABLE`         |
+| `INTERNAL`          | `UNAVAILABLE`         |
+| `PERMISSION_DENIED` | `AUTHORIZATION_ERROR` |
+
+The code is included in each error's extensions:
 
 ```js
 errors: [
-    {
-        path: ['primaryBalance', 'balance'],
-        message: '...',
-        extensions: { code: 'SERVER_ERROR' }
-    }
-]
+  {
+    path: ["primaryBalance", "balance"],
+    message: "...",
+    extensions: { code: "SERVER_ERROR" },
+  },
+];
 ```
 
 On the client, developers read the code for their fragment or field and render an appropriate localized experience:
@@ -133,10 +142,10 @@ const balanceError = getBalanceError("balance");
 
 if (data.balance == null && balanceError != null) {
   switch (balanceError.extensions.code) {
-    case "SERVER_ERROR":
+    case "UNAVAILABLE":
       // ...
       break;
-    case "AUTHENTICATION_ERROR":
+    case "PERMISSION_DENIED":
       // ...
       break;
   }
@@ -159,7 +168,7 @@ So the balance UX combines two signals: the error metadata, and how long it's be
 | missing | yes            | none in 60s          | Error state, message chosen by code    |
 | missing | none           | –                    | Deposit funds CTA (organically empty)  |
 
-My third key decision was to only escalate to an error after 60s without a balance update. Before that, we assume the subscription will fix it, and we show the user that the value is updating instead of telling them something is wrong. When an update arrives, the balance is fresh again and the error no longer matters.
+My third key decision was to only escalate to an error after a grace period without a balance update (60s in the examples). Before that, we assume the subscription will fix it, and we show the user that the value is updating instead of telling them something is wrong. When an update arrives, the balance is fresh again and the error no longer matters.
 
 This logic is subtle enough that we didn't want ~100 call sites reimplementing it, which is part of why it ended up in the design system's balance components (see [Preventing regressions](#preventing-regressions)).
 
@@ -167,7 +176,7 @@ This logic is subtle enough that we didn't want ~100 call sites reimplementing i
 
 Relay doesn't give components access to error metadata. In theory that makes sense, since the metadata is meant for debugging, not rendering. In practice it left a hole in Relay's error handling, which more recent versions have started to address. To use the metadata, we had to wire it from the network response to the UI ourselves.
 
-Extracting the errors was straightforward: a network middleware indexes each response's errors in a new `ErrorMetadataStore` on our customized `GraphqlEnvironment`.
+Extracting the errors was straightforward: a network middleware indexes each response's errors in a new `ErrorMetadataStore` on Coinbase's customized `GraphqlEnvironment`.
 
 Reading them from a fragment was the real challenge. The network response identifies errors by query name and path from the root, but a fragment read knows its owning query and cache key, not its path from the root. So I designed the lookup to work from the other direction. For each error, we walk the Relay store from the root along the error path. If the walk lands on the fragment's record, that error belongs to the fragment.
 
@@ -314,7 +323,7 @@ We called this concept "nullable schema", and it ends up being an axiom of Graph
 
 #### Extracting errors
 
-The first part is extracting error metadata from the response and indexing it. We create a new `ErrorMetadataStore` and attach it to our customized `GraphqlEnvironment` class:
+The first part is extracting error metadata from the response and indexing it. We create a new `ErrorMetadataStore` and attach it to Coinbase's customized `GraphqlEnvironment` class:
 
 ```ts
 class ErrorMetadataStore {
@@ -322,7 +331,7 @@ class ErrorMetadataStore {
   cache = new Map<string, GraphqlResponseError[]>();
 
   extractErrorsFromResponse(json) {
-    // operationName is a custom extension added by our GraphQL service
+    // operationName is a custom extension added by Coinbase's GraphQL service
     const operationName = json.extensions.operationName;
     const errors = json.errors;
     if (errors) {
