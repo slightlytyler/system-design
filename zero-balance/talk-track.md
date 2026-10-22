@@ -40,13 +40,13 @@ The UX had three requirements: don't show raw server error messages, keep partia
 
 **Show:** the first `useFragmentWithError` snippet.
 
-"The GraphQL response already tells you which fields errored, through the error metadata. So my first key decision was to build on that metadata. A null with a matching error is an error, and a null without one is organically empty. A new API, `useFragmentWithError`, would give you the data plus a getter for field errors. No schema change, so no migration."
+"The GraphQL response already tells you which fields errored, through the error metadata. So my first key decision was to build on that metadata. A null with a matching error is an error, and a null without one is organically empty. A new API, `useFragmentWithError`, would give you the data plus a getter for field errors. No schema change, so no backend migration."
 
 ## 3:00 Decision 2: normalized error codes (30s)
 
 **Show:** the gRPC to GraphQL error code mapping table.
 
-"Teams also needed to know _why_ a field failed, and many resolvers were hand-mapping gRPC errors into schema types. My second decision was to normalize that once, in the GraphQL service. Upstream gRPC statuses map to a small set of standard error codes, like this example, and those codes are included in the error metadata sent to the client."
+"Teams also needed to know _why_ a field failed, and many resolvers were hand-mapping gRPC statuses into schema error types. My second decision was to normalize that once, in the GraphQL service. Upstream gRPC statuses map to a small set of standard error codes, like this example, and those codes are included in the error metadata sent to the client. This means in most cases you would not need to create new schema types, at least if the standard error codes covered your cases."
 
 ## 3:30 Decision 3: staleness (45s)
 
@@ -58,17 +58,17 @@ The UX had three requirements: don't show raw server error messages, keep partia
 
 **Show:** the data flow diagram.
 
-"Relay doesn't expose error metadata, so we wired it through ourselves. A network middleware stores each response's errors by query name. The hard part is that errors are identified by their path from the root, but a fragment only knows its cache key. So I designed the lookup to walk the Relay store along each error path and check whether it ends on a record with a matching cache key. If it does, it returns that error."
+"Next let's talk about how this works on the client. Relay doesn't expose error metadata, so we wired it through ourselves. A network middleware stores each response's errors by query name. The hard part is that errors are identified by their path from the root, but a fragment only knows its cache key. So I designed the lookup to walk the Relay store along each error path and check whether it ends on a record with a matching cache key. If it does, it returns that error."
 
 ## 4:45 Guardrails and outcomes (30s)
 
-"To keep it fixed, we added lint rules that block falling back to zero, and built design system balance components with the stale and error logic built in. We coordinated with product teams to fix the violations, and migrated the T0 surfaces to the new components.
+"We also added new guardrails to keep it fixed. We added lint rules that block falling back to zero, and built design system balance components with the stale and error logic built in. We coordinated with product teams to fix the violations, and migrated the T0 surfaces to the new components.
 
 Over a quarter, we went from about 100 problem sites to zero, and we didn't see another zero balance incident."
 
 ## 5:15 Downsides (30s)
 
-"This approach does have some downsides, with the main downside being that this implementation relies heavily on Relay internals. We minimize the risk of an upgrade causing breaking changes with a large regression test suite.
+"This approach does have some downsides, with the main downside being that this implementation relies heavily on Relay internals. We minimize the risk of an upgrade causing breakage with a large regression test suite.
 
 Relay has since shipped its own field-level error handling, and our team gave input on it. When I left, we were investigating migrating, but there were still differences that blocked it."
 
