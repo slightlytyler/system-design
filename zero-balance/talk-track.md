@@ -4,7 +4,7 @@ Target: about 5 minutes, then hand over to questions. Timings are cumulative. **
 
 ## 0:00 Context and my role (30s)
 
-"This is the zero balance problem from the early years of Coinbase's GraphQL system. Users would sometimes see a zero balance, and after a high profile incident involving the primary balance on the home screem, we took a more active role in solving it with product teams.
+"I'm going to walk you through the zero balance problem from the early years of Coinbase's GraphQL system. Users would sometimes see a zero balance, and after a high profile incident involving the primary balance on the home screen, we took a more active role in solving it with product teams.
 
 I led the root cause analysis, owned the key design decisions, including how the solution integrated with Relay, and wrote the documentation and training. A member of my team implemented it, and I reviewed it."
 
@@ -40,13 +40,13 @@ The UX had three requirements: don't show raw server error messages, keep partia
 
 **Show:** the first `useFragmentWithError` snippet.
 
-"The GraphQL response already tells you which fields errored, through the error metadata. So my first key decision was to build on that metadata. A null with a matching error is an error, and a null without one is organically empty. A new API, `useFragmentWithError`, would give you the data plus a getter for field errors. No schema change, so no backend migration."
+"The GraphQL response already tells you which fields errored: each error includes the path of the field it affected. So my first key decision was to build on that metadata. A null with a matching error is an error, and a null without one is organically empty. A new API, `useFragmentWithError`, would give you the data plus a getter for field errors. No schema change, so no backend migration."
 
 ## 3:00 Decision 2: normalized error codes (30s)
 
 **Show:** the gRPC to GraphQL error code mapping table.
 
-"Teams also needed to know _why_ a field failed, and many resolvers were hand-mapping gRPC statuses into schema error types. My second decision was to normalize that once, in the GraphQL service. Upstream gRPC statuses map to a small set of standard error codes, like this example, and those codes are included in the error metadata sent to the client. This means in most cases you would not need to create new schema types, at least if the standard error codes covered your cases."
+"Teams also needed to know _why_ a field failed, and many resolvers were hand-mapping gRPC statuses into schema error types. My second decision was to normalize that once, in the GraphQL service. Upstream gRPC statuses map to a small set of standard error codes, like this example, and those codes are included in the error metadata sent to the client. So in most cases, teams no longer needed new schema types to model errors."
 
 ## 3:30 Decision 3: staleness (45s)
 
@@ -58,17 +58,17 @@ The UX had three requirements: don't show raw server error messages, keep partia
 
 **Show:** the data flow diagram.
 
-"Next let's talk about how this works on the client. Relay doesn't expose error metadata, so we wired it through ourselves. A network middleware stores each response's errors by query name. The hard part is that errors are identified by their path from the root, but a fragment only knows its cache key. So I designed the lookup to walk the Relay store along each error path and check whether it ends on a record with a matching cache key. If it does, it returns that error."
+"Next let's talk about how this works on the client. Relay doesn't expose error metadata, so we wired it through ourselves. A network middleware stores each response's errors by query name in a new error metadata store. The hard part is that errors are identified by their path from the root, but a fragment only knows its cache key, not its full path. So I designed the lookup to walk the Relay store along each error path and check whether it ends on a record with a matching cache key. If it does, it returns that error."
 
 ## 4:45 Guardrails and outcomes (30s)
 
-"We also added new guardrails to keep it fixed. We added lint rules that block falling back to zero, and built design system balance components with the stale and error logic built in. We coordinated with product teams to fix the violations, and migrated the T0 surfaces to the new components.
+"To keep it fixed, we added guardrails. Lint rules block falling back to zero, and new design system balance components have the stale and error logic built in. We coordinated with product teams to fix the violations, and migrated the T0 surfaces to the new components.
 
 Over a quarter, we went from about 100 problem sites to zero, and we didn't see another zero balance incident."
 
 ## 5:15 Downsides (30s)
 
-"This approach does have some downsides, with the main downside being that this implementation relies heavily on Relay internals. We minimize the risk of an upgrade causing breakage with a large regression test suite.
+"The main downside of this approach is that it relies heavily on Relay internals. We minimized the risk of an upgrade causing breakage with a large regression test suite.
 
 Relay has since shipped its own field-level error handling, and our team gave input on it. When I left, we were investigating migrating, but there were still differences that blocked it."
 
