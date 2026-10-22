@@ -14,7 +14,7 @@ I led the root cause analysis, owned the key design decisions, including how the
 
 **Show:** the `?? 0` snippet.
 
-"When the balance service failed, our nullable schema returned a null balance, and client code like this defaulted it to zero.
+"When the balance service failed, our nullable schema returned a null balance, and client code like this defaulted it to zero. In a crypto app, a user who sees $0 may think their funds were stolen, and Coinbase prided itself on being the most trusted name in crypto. So even a momentary $0 was a serious trust problem.
 
 My investigation found three things. It was widespread: about 100 places in the frontend did this. It was frequent: the balance service had a small but steady error rate, and we estimated it hit thousands of users a day. That's an estimate, because we had no client observability for it. And it was often ephemeral: balances are live, so the subscription usually recovered a moment later. That last point ends up shaping the UX."
 

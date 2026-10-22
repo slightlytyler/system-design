@@ -10,6 +10,8 @@ I led the root cause analysis, owned the key design decisions, including how the
 
 When the balance service failed, our nullable GraphQL schema returned a null balance, and client code defaulted that null to zero. Users saw a $0 balance.
 
+In a crypto app, that's alarming. Stolen funds are a real problem in crypto, so a user who sees $0 may think their account was compromised. Coinbase prided itself on being the most trusted name in crypto, so even a momentary $0 balance was a serious trust problem.
+
 ```tsx
 const data = useFragment(graphql`...`, ref);
 const balance = data.balance ?? 0;
