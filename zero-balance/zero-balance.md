@@ -123,6 +123,24 @@ if (data.balance == null && balanceError) {
 }
 ```
 
+#### Live data and staleness
+
+Error metadata tells us _why_ a balance is missing, but on its own it would have made the UX worse. Remember that most zero balances were ephemeral: the initial query failed, but the subscription recovered a moment later. If we showed an error every time we saw error metadata, we'd just replace a flash of $0 with a flash of an error message.
+
+So the balance UX combines two signals: the error metadata, and how long it's been since we last received a good balance update.
+
+| Balance       | Error metadata | Last good update        | UX                                     |
+| ------------- | -------------- | ----------------------- | -------------------------------------- |
+| present       | –              | recent                  | Balance                                |
+| present       | –              | over `<N>s` ago (stale) | Balance faded out with a shimmer       |
+| missing       | yes            | under 60s               | Shimmer placeholder, expect a recovery |
+| missing       | yes            | none in 60s             | Error state, message chosen by code    |
+| missing       | none           | –                       | Deposit funds CTA (organically empty)  |
+
+The key decision was to only escalate to an error after 60s without a balance update. Before that, we assume the subscription will fix it, and we show the user that the value is updating instead of telling them something is wrong. When an update arrives, the balance is fresh again and the error no longer matters.
+
+This logic is subtle enough that we didn't want hundreds of call sites reimplementing it, which is part of why it ended up in the design system's balance components (below).
+
 ## Technical blockers
 
 #### Blocked by Relay
