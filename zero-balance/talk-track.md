@@ -4,7 +4,7 @@ Target: about 5 minutes, then hand over to questions. Timings are cumulative. **
 
 ## 0:00 Context and my role (30s)
 
-"This is the zero balance problem from the early years of Coinbase's GraphQL system. Users would sometimes see a zero balance, and after a high profile incident involving the primary balance on the homepage, we took a more active role in solving it with product teams.
+"This is the zero balance problem from the early years of Coinbase's GraphQL system. Users would sometimes see a zero balance, and after a high profile incident involving the primary balance on the home screem, we took a more active role in solving it with product teams.
 
 I led the root cause analysis, owned the key design decisions, including how the solution integrated with Relay, and wrote the documentation and training. A member of my team implemented it, and I reviewed it."
 
@@ -14,7 +14,7 @@ I led the root cause analysis, owned the key design decisions, including how the
 
 "Here's an example of code that suffers from the problem.
 
-When the balance service failed, Coinbase's nullable schema returned a null balance, and client code like this defaulted it to zero. In a crypto app, a user who sees a zero balance may think their funds were stolen, and Coinbase prided itself on being the most trusted name in crypto. So even a momentary zero balance was a serious trust problem.
+When the balance service failed, Coinbase's nullable GraphQL schema returned a null balance, and client code like this defaulted it to zero. In a crypto app, a user who sees a zero balance may think their funds were stolen, and Coinbase prided itself on being the most trusted name in crypto. So even a momentary zero balance was a serious trust problem.
 
 My investigation found three things.
 
@@ -26,7 +26,7 @@ My investigation found three things.
 
 ## 1:30 Constraint and requirements (30s)
 
-"The big constraint was migration cost. There was a lot of existing code with varied schemas and error states, so anything requiring a migration, especially one involving GraphQL schema and resolvers, would be a tall order.
+"The big constraint in any solution was migration cost. There was a lot of existing code with varied schemas and error states, so anything requiring a migration, especially one involving GraphQL schema and resolvers, would be a tall order.
 
 The UX had three requirements: don't show raw server error messages, keep partial rendering so a single field erroring doesn't break the screen, and handle live data, where a value can be fresh, stale or updating."
 
@@ -40,13 +40,13 @@ The UX had three requirements: don't show raw server error messages, keep partia
 
 **Show:** the first `useFragmentWithError` snippet.
 
-"The GraphQL response already tells you which fields errored, through the error path. So my first key decision was to build on that metadata. A null with a matching error is an error, and a null without one is organically empty. `useFragmentWithError` gives you the data plus a getter for field errors. No schema change, so no migration."
+"The GraphQL response already tells you which fields errored, through the error metadata. So my first key decision was to build on that metadata. A null with a matching error is an error, and a null without one is organically empty. A new API, `useFragmentWithError`, would give you the data plus a getter for field errors. No schema change, so no migration."
 
 ## 3:00 Decision 2: normalized error codes (30s)
 
 **Show:** the gRPC to GraphQL error code mapping table.
 
-"Teams also needed to know _why_ a field failed, and many resolvers were hand-mapping gRPC errors into schema types. My second decision was to standardize that once, in the GraphQL service. Upstream gRPC statuses map to a small set of standard error codes, like this example, and are included in the error metadata sent to the client."
+"Teams also needed to know _why_ a field failed, and many resolvers were hand-mapping gRPC errors into schema types. My second decision was to normalize that once, in the GraphQL service. Upstream gRPC statuses map to a small set of standard error codes, like this example, and those codes are included in the error metadata sent to the client."
 
 ## 3:30 Decision 3: staleness (45s)
 
@@ -68,7 +68,7 @@ Over a quarter, we went from about 100 problem sites to zero, and we didn't see 
 
 ## 5:15 Downsides (30s)
 
-"The main downside is that this implementation relies heavily on Relay internals, which we contained with a large regression test suite for Relay upgrades. The API also got wide, with a `WithError` variant for each Relay hook or data reading function.
+"This approach does have some downsides, with the main downside being that this implementation relies heavily on Relay internals. We minimize the risk of an upgrade causing breaking changes with a large regression test suite.
 
 Relay has since shipped its own field-level error handling, and our team gave input on it. When I left, we were investigating migrating, but there were still differences that blocked it."
 
