@@ -2,11 +2,11 @@
 
 ## Intro
 
-The zero balance problem is a classic Coinbase problem from the early years of the GraphQL system. The problem had existed in many forms but started popping up more as we progressed the migration to GraphQL. After a high profile incident involving the primary balances on the homepage we took a more active role in working with product teams to solve it.
+The zero balance problem is a classic Coinbase problem from the early years of the GraphQL system. It had existed in many forms, but it started showing up more as the migration to GraphQL progressed. After a high profile incident involving the primary balance on the homepage, we took a more active role in working with product teams to solve it.
 
 ## Problem
 
-Our initial investigation discovered that the problem occurred when the balance service failed, Coinbase's nullable GraphQL schema returned null balances, and client code across the app defaulted these nulls to zero via nullish coalescing like `balance ?? 0`, so users saw a $0 balance.
+When the balance service failed, our nullable GraphQL schema returned a null balance, and client code defaulted that null to zero. Users saw a $0 balance.
 
 ```tsx
 const data = useFragment(graphql`...`, ref);
@@ -15,46 +15,50 @@ const balance = data.balance ?? 0;
 <PrimaryBalance balance={balance} />;
 ```
 
-There were hundreds of places across frontend with this sort of behavior. When we looked at error rates for the balance service we found a small but steady error rate. We didn't have observability into this exact client behavior but based on things like client RPS, service error rate, etc, we assumed this was happening to thousands of users every day.
+Our initial investigation found three things that made this more than a one-off bug:
 
-It's also important to note that often this zero balance case was ephemeral where the user would see the zero balance just for an instant before it was updated and working again. Balances were updated live via GraphQL subscriptions so the initial query would fail but eventually the subscription would kick in and succeed.
+| Finding    | Detail                                                                                                                                                                                       |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Widespread | Hundreds of places across frontend had this sort of fallback.                                                                                                                                |
+| Frequent   | The balance service had a small but steady error rate. We didn't have observability into this exact client behavior, but from client RPS and service error rates we estimated it hit thousands of users every day. |
+| Ephemeral  | Often the $0 only flashed for an instant. Balances update live via GraphQL subscriptions, so the initial query would fail but the subscription would eventually kick in and succeed.        |
+
+That last finding ends up shaping the UX (see [Live data and staleness](#live-data-and-staleness)).
 
 ## Scope
 
-To address this problem we need to figure out:
+We needed to answer three questions:
 
-1. The expected UX in these cases
-2. What are the technical blockers to that UX
-3. How to prevent new problems from occurring once we have a solution
+1. What should the UX be when a balance is missing? ([Expected UX](#expected-ux))
+2. What's technically blocking that UX? ([Technical blockers](#technical-blockers))
+3. How do we stop the problem from coming back? ([Preventing regressions](#preventing-regressions))
 
-#### Migration cost
-
-We need to be mindful that there is a lot of code already in place with a decent amount of variation between the GraphQL schema being used, the various error states, etc. Any solution involving a migration will be a tall order.
+The big constraint was migration cost. There was a lot of existing code, with a decent amount of variation in the GraphQL schema and error states it used. Any solution that required a migration would be a tall order.
 
 ## Expected UX
 
-#### Careful error messaging
+Any solution had to meet three requirements:
 
-Rendering a server created or unlocalized error message to the end user does not help. We need to be careful when and how we show error messages.
+| Requirement             | Why                                                                                  | Rules out                                  |
+| ----------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------ |
+| Careful error messaging | Server-created or unlocalized error messages don't help users                        | Rendering the error message directly       |
+| Partial rendering       | In GraphQL architecture, a screen should still render when some of its data is missing | Failing the whole screen over one field  |
+| Live data               | Balances update live, so a value can be up to date, stale, or being updated          | Treating a failed query as a final state   |
 
-#### Partial rendering
-
-In GraphQL architecture we expect that the application should be partially renderable even if some of the data is missing. This creates problems for critical sections of the UI like the primary balance. What do we render when balance is totally missing or errored?
-
-#### Live data
-
-Balances are hooked up to live data so it's more complex than just having a few terminal states. We need UX that expresses to the user when a value is up to date vs stale and when it's being updated.
+Partial rendering creates a hard question for critical UI like the primary balance: what do we render when the balance is missing or errored?
 
 ## Finding an alternative
 
-#### Existing error handling
+### Existing error handling
 
-At CB we had some existing query error handling best practices that boiled down to:
+Our existing error handling best practices gave teams two options, and neither worked here:
 
-    a. Check if a field is present and either render a fallback or nothing at all.
-    b. If you have more complex states (like an organic null state, or explicit error states) use custom schema to solve it.
+| Option        | How it works                                                   | Why it falls short                                                                 |
+| ------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Fallback      | Check if a field is present, and render a fallback or nothing  | Can't tell an error apart from an organically empty balance. This is how `?? 0` happened |
+| Custom schema | Model organic null and error states explicitly in the schema   | A breaking change that requires a v2 field and a migration                         |
 
-Here's what b. looks like in practice:
+Here's what the custom schema option looks like in practice:
 
 ```graphql
 type Query {
@@ -64,15 +68,11 @@ type Query {
 union BalanceResult = Balance | ServiceError | GenericError
 ```
 
-Using union types we can model explicit error states that the client can handle individually. The problem is this is a breaking change and would require migration (notice the `v2` field name).
+Any schema migration comes at significant cost in staffing hours, trust and morale, and many migrations that start are never completed. No one is excited about making a v2 field or modeling errors this way unless the data model is truly complex.
 
-Any schema migration comes at significant cost in terms of staffing hours, trust, morale, etc. Many migrations that start are never completed. No one is excited about having to make a v2 field or model errors this way unless the data model is truly complex.
+### Using error metadata
 
-#### Using error metadata
-
-Ok so we can see that using a simple fallback doesn't work, and creating new schema types/fields and migrating to them would be an enormous problem.
-
-If we take a look at an example of a GraphQL response with errors we can see there's additional metadata available in the response:
+We needed to tell "null because of an error" apart from "organically null" without changing the schema. The GraphQL response already contains that information: each error includes the path of the field it affected.
 
 ```js
 {
@@ -86,7 +86,7 @@ If we take a look at an example of a GraphQL response with errors we can see the
 }
 ```
 
-If we can read this error metadata we could enable new UX. At least differentiating between organically null (no associated error) and null due to error. Here's what an API could look like:
+If the client could read this metadata, a null field with a matching error is an error, and a null field without one is organically empty. Here's what that API could look like:
 
 ```tsx
 const [getBalanceError, data] = useFragmentWithError(graphql`...`, ref);
@@ -102,11 +102,13 @@ if (data.balance == null) {
 return <PrimaryBalance balance={data.balance} />;
 ```
 
-#### Expanding the API
+The key decision was to build on metadata the response already contained instead of changing the schema, so adopting it didn't require a migration.
 
-During our investigation of the existing patterns we noticed a lot of repeated schema for handling error states. While some schema had custom error states explicitly as part of their model much of the schema error handling was dedicated to handling the common cases like service error, connectivity issues, authorization, etc. Many resolvers had code that was directly mapping various gRPC error codes into GraphQL schema error types.
+### Expanding the API
 
-We realized that we could use this new abstraction to solve for this problem as well. This would allow devs to access the error code associated with their fragment/field and render an appropriate localized experience. All without having to create v2 resolvers or migrating schema.
+Knowing _that_ a field errored wasn't always enough. In some cases teams needed to know _why_. While investigating existing patterns, we found a lot of repeated schema for handling errors. Some of it modeled errors specific to its domain, but much of it covered the same common cases (service errors, connectivity issues, authorization), and many resolvers were directly mapping gRPC error codes into GraphQL error types.
+
+So we moved that mapping into the GraphQL service's network layer. Errors automatically get a normalized error code based on the upstream gRPC response, and there are methods for setting codes manually in edge cases where there's no direct mapping. On the client, developers read the code for their fragment or field and render an appropriate localized experience:
 
 ```tsx
 const [getBalanceError, data] = useFragmentWithError(graphql`...`, ref);
@@ -125,73 +127,66 @@ if (data.balance == null && balanceError != null) {
 }
 ```
 
-#### Live data and staleness
+The key decision was to normalize error codes once, in the GraphQL service, instead of in each resolver's schema. Teams got explicit error states without creating v2 resolvers or migrating schema.
+
+### Live data and staleness
 
 Error metadata tells us _why_ a balance is missing, but on its own it would have made the UX worse. Remember that most zero balances were ephemeral: the initial query failed, but the subscription recovered a moment later. If we showed an error every time we saw error metadata, we'd just replace a flash of $0 with a flash of an error message.
 
 So the balance UX combines two signals: the error metadata, and how long it's been since we last received a good balance update.
 
-| Balance       | Error metadata | Last good update        | UX                                     |
-| ------------- | -------------- | ----------------------- | -------------------------------------- |
-| present       | –              | recent                  | Balance                                |
-| present       | –              | over `<N>s` ago (stale) | Balance faded out with a shimmer       |
-| missing       | yes            | under 60s               | Shimmer placeholder, expect a recovery |
-| missing       | yes            | none in 60s             | Error state, message chosen by code    |
-| missing       | none           | –                       | Deposit funds CTA (organically empty)  |
+| Balance | Error metadata | Last good update        | UX                                     |
+| ------- | -------------- | ----------------------- | -------------------------------------- |
+| present | –              | recent                  | Balance                                |
+| present | –              | over `<N>s` ago (stale) | Balance faded out with a shimmer       |
+| missing | yes            | under 60s               | Shimmer placeholder, expect a recovery |
+| missing | yes            | none in 60s             | Error state, message chosen by code    |
+| missing | none           | –                       | Deposit funds CTA (organically empty)  |
 
 The key decision was to only escalate to an error after 60s without a balance update. Before that, we assume the subscription will fix it, and we show the user that the value is updating instead of telling them something is wrong. When an update arrives, the balance is fresh again and the error no longer matters.
 
-This logic is subtle enough that we didn't want hundreds of call sites reimplementing it, which is part of why it ended up in the design system's balance components (below).
+This logic is subtle enough that we didn't want hundreds of call sites reimplementing it, which is part of why it ended up in the design system's balance components (see [Preventing regressions](#preventing-regressions)).
 
 ## Technical blockers
 
-#### Blocked by Relay
+Relay doesn't give components access to error metadata. In theory that makes sense, since the metadata is meant for debugging, not rendering. In practice it left a hole in Relay's error handling, which more recent versions have started to address. To use the metadata, we had to wire it from the network response to the UI ourselves.
 
-Unfortunately Relay doesn't provide access to the error metadata. In theory this makes sense since the error metadata is for debugging not rendering. In practice this left a hole in Relay's error handling (which has started to be addressed in more recent versions).
+Extracting the errors was straightforward: a network middleware indexes each response's errors in a new `ErrorMetadataStore` on our customized `GraphqlEnvironment`.
 
-To access this metadata we would need to wire it up from the source to the UI.
+Reading them from a fragment was the real challenge. The network response identifies errors by query name and path from the root, but a fragment read only knows its fragment name and cache key, not its path. So we work from the other direction. For each error, we walk the Relay store from the root along the error path. If the walk lands on the fragment's record, that error belongs to the fragment.
 
-#### Extracting error metadata from responses
+### New data flow
 
-The first part of the problem is extracting error metadata from the response and indexing it. This part is straightforward. First we create a new ErrorMetadataStore and attach it to our customized GraphqlEnvironment class.
+End to end, the new data flow is:
 
-#### Reading error metadata via fragments
-
-The real challenge of this problem is that the information we have available in the network response (query name, field paths) does not directly map to the metadata available when reading fragment data out of the store (fragment name, fragment id, cache key).
-
-The question is when useFragment is called how do we know which error is associated with it? A fragment or field has a cache key associated with it but we don't know its full path from the query root.
-
-To figure out what key is associated with which error path we have to start from the other direction. Basically what we want is path directed traversal that translates error paths into relay keys. Once we have a match we return the associated error.
-
-#### New data flow
-
-In the new data flow the upstream gRPC status is mapped to a normalized error code in the graphql service, where it's included in the error metadata, which is then extracted in the client in a middleware, and set in a new error metadata store. The client reads from this store to determine which UX to present.
+1. The GraphQL service maps the upstream gRPC status to a normalized error code in the error metadata.
+2. A client middleware extracts the errors from each response.
+3. The error metadata store holds them, indexed by query.
+4. `useFragmentWithError` reads from the store to decide which UX to present.
 
 ![Alt text](./images/new-data-flow.png)
 
-#### Addressing additional concerns
+## Preventing regressions
 
-The new APIs along with the documentation and training we created gave developers all the tools to avoid this problem but it didn't address the systemic problems already in the codebase. To address this we introduced new linting rules that blocked the nullish coalescing to zero.
+The new APIs, documentation and training gave developers the tools to avoid this problem, but they didn't address the systemic problem already in the codebase. Two more layers did:
 
-In addition we worked with the design system team to create balance components that encapsulated the logic around showing balances, stale states, and error states, so that individual product teams wouldn't have to reimplement them.
+| Layer                            | What it does                                                                                                                 |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Lint rules                       | Block nullish coalescing to zero, and detect existing violations to remove                                                   |
+| Design system balance components | Built with the design system team. Encapsulate the logic for showing balances, stale states and error states, so product teams don't reimplement it |
 
 ## Outcomes
 
 The deliverables were:
 
-1. New hooks API for reading error metadata
-2. New linting rules that disallow nullish coercion to zero.
-3. New design system components for displaying stale balances and errors.
+1. A new hooks API for reading error metadata
+2. New lint rules that disallow nullish coercion to zero
+3. New design system components for displaying balances, stale balances and errors
 4. Documentation and training materials
 
-We were able to systematically eliminate the zero balance by:
+We systematically eliminated the zero balance by removing the nullish coalescing violations the lint rule detected, and by migrating surfaces to the new design system components. We verified this through a reduction in incidents and CX tickets. There wasn't a straightforward way to detect the problem through client observability, so we relied on these proxy metrics.
 
-1. Removing nullish coalescing violations as detected by the lint rule.
-2. Migrating surfaces to the new design system components
-
-This was verified by the reduction in incidents and CX tickets. Unfortunately there wasn't a straightforward way to detect this problem via client observability so we used proxy metrics.
-
-We were also able to simplify schema design for new use cases due to the new APIs covering most cases.
+Because the new APIs covered most error handling cases, schema design for new use cases also got simpler.
 
 ## Appendix
 
@@ -213,13 +208,13 @@ query HomeScreenQuery {
 }
 ```
 
-## GraphQL Architecture
+### GraphQL architecture
 
-In CB's GraphQL architecture the GraphQL service sits in between the client and upstream services. The client loads all the data for a screen via a single query where the GraphQL service handles making the requests to the services and stitching the responses together.
+The GraphQL service sits between the clients and upstream services. The client loads all the data for a screen in a single query, and the GraphQL service makes the requests to upstream services and stitches the responses together.
 
 ![Alt text](./images/graphql-v1-arch.png)
 
-On the client Relay provides an in memory normalized cache. The cache is essentially a mapping between records and their Relay cache key. The keys look something like this:
+On the client, Relay provides an in-memory normalized cache, which maps each Relay cache key to a record. The keys look something like this:
 
 ```ts
 // when a record has an explicit `id` field
@@ -229,11 +224,11 @@ On the client Relay provides an in memory normalized cache. The cache is essenti
 "client:root:topAssets(first:3)";
 ```
 
-## Errors and nulls
+### Errors and nulls
 
-What happens to the HomeScreenQuery when the balance service is down? In GraphQL a response with errors is still a 200 where we resolve as much data as possible. Depending on how we structure the schema we get very different responses.
+What happens to `HomeScreenQuery` when the balance service is down? In GraphQL, a response with errors is still a 200, and the service resolves as much data as possible. What the client gets back depends on the schema's nullability.
 
-Here's an example where we use required types which avoids nullable types:
+With required types:
 
 ```graphql
 type Query {
@@ -247,8 +242,6 @@ type Balance {
 }
 ```
 
-The problem is balance service going down means we can't resolve `primaryBalance.balance` which results in a response like:
-
 ```js
 {
     data: null,
@@ -256,9 +249,7 @@ The problem is balance service going down means we can't resolve `primaryBalance
 }
 ```
 
-The `balance` and `primaryBalance` fields are required so the null bubbles to the top level which results in the `topAssets` field getting clobbered.
-
-Ok let's consider a different schema:
+With nullable types:
 
 ```graphql
 type Query {
@@ -272,8 +263,6 @@ type Balance {
 }
 ```
 
-This time when balance service goes down we get a response like:
-
 ```js
 {
     data: {
@@ -286,11 +275,18 @@ This time when balance service goes down we get a response like:
 }
 ```
 
-We called this concept "nullable schema" and it ends up being an axiom of GraphQL system design. This pattern allows you to update as much of the UI as possible and prevents individual services from breaking the response.
+| Schema   | When the balance service is down                                                                 | Result                          |
+| -------- | ------------------------------------------------------------------------------------------------ | ------------------------------- |
+| Required | `balance` and `primaryBalance` can't be null, so the null bubbles up to the root                  | `data: null`, `topAssets` is clobbered |
+| Nullable | The null stops at `balance`                                                                       | Everything else still renders   |
 
-## Technical implementation
+We called this concept "nullable schema", and it ends up being an axiom of GraphQL system design: it lets as much of the UI update as possible, and prevents individual services from breaking the whole response.
 
-The first part of the problem is extracting error metadata from the response and indexing it. This part is straightforward. First we create a new ErrorMetadataStore and attach it to our customized GraphqlEnvironment class:
+### Technical implementation
+
+#### Extracting errors
+
+The first part is extracting error metadata from the response and indexing it. We create a new `ErrorMetadataStore` and attach it to our customized `GraphqlEnvironment` class:
 
 ```ts
 class ErrorMetadataStore {
@@ -315,7 +311,7 @@ class GraphqlEnvironment {
 }
 ```
 
-Next we integrate the error metadata store into the network layer via a middleware:
+Then we integrate the store into the network layer with a middleware:
 
 ```ts
 const extractErrors = (graphqlEnv) => (next) => async (url, init) => {
@@ -327,7 +323,7 @@ const extractErrors = (graphqlEnv) => (next) => async (url, init) => {
 };
 ```
 
-The real challenge of this problem is that the information we have available in the network response (query name, field paths) does not directly map to the metadata available when reading fragment data out of the store (fragment name, fragment id, cache key).
+#### Matching errors to fragments
 
 Relay has two strategies for creating cache keys:
 
@@ -337,9 +333,7 @@ Relay has two strategies for creating cache keys:
 <parentRecordId>:<fieldKey>:<indexKey> // 47ac10b-58cc-4372-a567-0e02b2c3d479:foo:bar(first:10):2:baz
 ```
 
-The question is when useFragment is called how do we know which error is associated with it? It's possible to figure out this mapping but it requires walking the Relay store and finding which key is associated with which path.
-
-Basically what we want is path directed traversal that translates error paths into relay keys. With that map in hand we can lookup error metadata from the useFragment calls.
+When `useFragment` is called, we only have the fragment's cache key, not its path. To find its errors, we walk the Relay store along each error path and check which record it lands on:
 
 ```ts
 class ErrorMetadataStore {
@@ -379,6 +373,8 @@ class ErrorMetadataStore {
 }
 ```
 
+The hook wraps `useFragment` and exposes the lookup:
+
 ```tsx
 function useFragmentWithError(fragment, ref) {
   const data = useFragment(fragment, ref);
@@ -405,6 +401,11 @@ function useFragmentWithError(fragment, ref) {
 }
 ```
 
-## Edge cases
+### Edge cases
 
-There's a lot of edge cases not captured here. What happens when a field has arguments? What happens when a field is aliased? What happens when a field is a list type? What happens when the same query is in flight with different variables, since errors are keyed by query name? The `findErrorMetadata` function gets complicated fast and requires significant investigation and a suite of unit tests to validate it.
+`findErrorMetadata` gets complicated fast, and it took significant investigation and a suite of unit tests to validate. Open edge cases include:
+
+- Fields with arguments
+- Aliased fields
+- List fields
+- The same query in flight with different variables, since errors are keyed by query name
