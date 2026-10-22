@@ -62,7 +62,7 @@ The UX had three requirements: don't show raw server error messages, keep partia
 
 ## 4:45 Guardrails and outcomes (30s)
 
-**Show:** guardrails table.
+**Show:** the preventing regressions table.
 
 "To keep it fixed, we added guardrails. Lint rules block falling back to zero, and new design system balance components have the stale and error logic built in. We coordinated with product teams to fix the violations, and migrated the T0 surfaces to the new components.
 
