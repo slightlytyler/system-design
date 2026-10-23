@@ -139,6 +139,7 @@ The new live-prices service was designed specifically to serve user traffic at s
 - Removed WebSockets from the client architecture
 - GraphQL subscriptions enabled dozens of live data use cases in the first year alone
 - `@defer` was implemented later, when GraphQL federation landed, and the frontend architecture extended to it with minimal changes
+- By the time I left, `@defer` was used on basically every high priority flow to reduce latency
 - More recently, the Wallet team used GraphQL subscriptions for the Base app rebuild
 - By the time I left, the schema had 75+ subscriptions, covering use cases such as prices, balances, trading, AI, internal tools and more
 
