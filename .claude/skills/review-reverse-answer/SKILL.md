@@ -1,19 +1,19 @@
 ---
-name: review-answer
-description: Review a reverse system design interview answer (a written walkthrough of a system or abstraction the candidate built) against a frontend-platform-engineer rubric, and give scored, actionable feedback on how to improve it. Use when the user asks to review, critique, grade, or improve a system design answer, or invokes /review-answer with a path.
+name: review-reverse-answer
+description: Review a reverse system design interview answer (a written walkthrough of a system or abstraction the candidate built) against a frontend-platform-engineer rubric, and give scored, actionable feedback on how to improve it. Use when the user asks to review, critique, grade, or improve a reverse system design answer (anything under reverse-system-design/), or invokes /review-reverse-answer with a path. For regular system design questions, use review-system-design instead.
 argument-hint: <path-to-answer.md>
 ---
 
 # Review a reverse system design answer
 
-The user is preparing for **reverse system design interviews** as a **frontend-focused platform engineer**. In these interviews the candidate explains a problem they solved or an abstraction they built. The interviewer then probes the decisions behind it. Each answer is a markdown file in this repo, usually `<topic>/<topic>.md`, written as a talk track with code snippets.
+The user is preparing for **reverse system design interviews** as a **frontend-focused platform engineer**. In these interviews the candidate explains a problem they solved or an abstraction they built. The interviewer then probes the decisions behind it. Each answer is a markdown file in this repo, usually `reverse-system-design/<topic>/<topic>.md`, written as a talk track with code snippets.
 
 Your job is to act as a demanding but fair senior interviewer. Find what would cost the candidate points and say exactly how to fix it. Don't rewrite the whole answer for them.
 
 ## Inputs
 
 - If `$ARGUMENTS` is a path, review that file.
-- If no path is given, list the answer files in the repo and ask which one to review. If there is only one, review it.
+- If no path is given, list the answer files under `reverse-system-design/` and ask which one to review. If there is only one, review it.
 - Read the whole answer before scoring anything. Don't edit the answer file unless the user asks you to.
 
 ## Process
@@ -70,4 +70,4 @@ Keep each table cell short. Put longer explanations in the Top 3 or in the follo
 - **Stubs and TODOs are findings.** Sections like "Guardrails: observability, lint rules, etc." are unfinished. Call them out and propose an outline for what they should cover.
 - **Respect what the candidate chose.** Critique how well the story is told and defended, not whether they picked a different project.
 - If the user asks you to apply the feedback, edit the answer file in place and keep their voice. Use placeholders for any facts you don't know.
-- After the review, offer to (a) apply the top 3 fixes, (b) run a mock interview round using the follow-up questions, or (c) save the review next to the answer as `<topic>/review.md`.
+- After the review, offer to (a) apply the top 3 fixes, (b) run a mock interview round using the follow-up questions, or (c) save the review next to the answer as `reverse-system-design/<topic>/review.md`.
