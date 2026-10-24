@@ -23,8 +23,10 @@ The Data Layer team needed to decide which protocol to use for the GraphQL live 
 
 In GraphQL there are two ways live data is used:
 
-1. Subscriptions: the typical live data operation, where a stream of events updates the cache on the client
-2. Deferred queries: a performance optimization directive used to stream slow portions of a query to the client after an initial payload of fast fields is sent
+| Operation        | Description                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Subscriptions    | The typical live data operation, where a stream of events updates the cache on the client                                                  |
+| Deferred queries | A performance optimization directive used to stream slow portions of a query to the client after an initial payload of fast fields is sent |
 
 We were primarily focused on subscriptions at this point, but were conscious that we would someday need to extend our systems to support deferred queries.
 
