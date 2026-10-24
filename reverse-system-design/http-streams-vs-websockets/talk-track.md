@@ -46,7 +46,7 @@ The frontend architecture favored HTTP, and this was the deciding factor for me.
 
 "So we chose HTTP streams and took on the platform work. We patched the React Native polyfill and contributed the fix upstream.
 
-On the frontend, unary queries and subscriptions share one pipeline: the same fetch, the same response wrapper, and the same middleware for authorization, retries and observability. The only difference is the parser at the start and whether the result resolves a promise or emits to a Relay observable."
+On the frontend, unary queries and subscriptions shared one pipeline: the same fetch, the same response wrapper, and the same middleware for authorization, retries and observability. The only difference was the parser at the start and whether the result resolved a promise or emitted to a Relay observable."
 
 ## 4:15 Backend architecture (30s)
 
@@ -68,12 +68,14 @@ _Pause and hand over to questions._
 
 ## If asked
 
-| Question                                                   | Where to go                                                                                   |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Why not use WebSockets' bidirectional channel?             | Requirements. Subscriptions are one-way, so it gave no advantage.                             |
-| What were the performance test results in detail?          | Considerations: Performance                                                                   |
-| How did you get fetch streaming working on React Native?   | Decision and first use cases. Patched the open source polyfill and contributed upstream.      |
-| Why build a new service instead of fixing the old one?     | Backend architecture: Why a new service. No distributed cache, 3-5s latency, upstream load.   |
-| What do connection dedupe and inverse currency pairs mean? | Backend architecture: Why a new service                                                       |
-| How did `@defer` fit in?                                   | Outcomes, and Frontend architecture. Same pipeline, minimal changes.                          |
-| Did teams adopt it?                                        | Outcomes. Dozens of use cases in year one, 75+ subscriptions, the Wallet team's Base rebuild. |
+| Question                                                   | Where to go                                                                                      |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Why not use WebSockets' bidirectional channel?             | Requirements. Subscriptions are one-way, so it gave no advantage.                                |
+| What were the performance test results in detail?          | Considerations: Performance                                                                      |
+| How did you get fetch streaming working on React Native?   | Decision and first use cases. Patched the open source polyfill and contributed upstream.         |
+| Why build a new service instead of fixing the old one?     | Backend architecture: Why a new service. No distributed cache, 3-5s latency, upstream load.      |
+| What do connection dedupe and inverse currency pairs mean? | Backend architecture: Why a new service                                                          |
+| How did `@defer` fit in?                                   | Outcomes, and Frontend architecture. Same pipeline, minimal changes.                             |
+| Did teams adopt it?                                        | Outcomes. Dozens of use cases in year one, 75+ subscriptions, the Wallet team's Base rebuild.    |
+| Isn't a new HTTP request per subscription expensive?       | Downsides. Slightly more than a message on an open socket, but small.                            |
+| What about head-of-line blocking?                          | Downsides. Shared by both: a multiplexed WebSocket has the same problem. HTTP/3 would remove it. |
