@@ -18,9 +18,9 @@ I was on the team that owned GraphQL, and was the directly responsible individua
 
 ## 1:00 Problem and requirements (45s)
 
-"The existing prices system ran over WebSockets. It had scaling and performance problems that meant prices only updated every 3 to 5 seconds, and WebSockets had a history of leaked connections and a buggy reconnect loop. Whatever protocol we picked for GraphQL would become the foundation for every live feature.
+"The existing prices system ran over WebSockets. It had scaling and performance problems that meant prices only updated every 3 to 5 seconds, and WebSockets had a history of leaked connections and a buggy reconnect loop on the frontend. Whatever protocol we picked for GraphQL would become the foundation for live data.
 
-The key requirements: delivery is one-way, from server to client, so WebSockets' bidirectional channel gave us no advantage. We needed to scale to hundreds of thousands of connections, support React Native and web, improve event latency, and have a resilient reconnect loop."
+The key requirements: we needed to scale to hundreds of thousands of connections, improve event latency, support React Native and web, and have a resilient reconnect loop."
 
 ## 1:45 Comparing the options (75s)
 
@@ -28,7 +28,7 @@ The key requirements: delivery is one-way, from server to client, so WebSockets'
 
 "We compared the two options on four considerations.
 
-Operational experience favored HTTP. The routing team found WebSockets painful to support, mainly because of leaked connections, and on the frontend the reconnect loop was buggy.
+Operational experience favored HTTP. The routing team found WebSockets painful to support, which matched our experience on the frontend.
 
 Platform support favored WebSockets. React Native didn't fully support fetch streaming at the time, and the open source polyfills were incomplete.
 
@@ -38,7 +38,7 @@ The frontend architecture favored HTTP, and this was the deciding factor for me.
 
 ## 3:00 Overcoming skepticism (30s)
 
-"There was early skepticism that HTTP could scale for live data. The assumption was that clients can only hold a few HTTP connections open, which is a holdover from HTTP/1.1. We showed that limits did exist on some platforms, around 60 connections on iOS in our testing, but that was more than enough for our needs."
+"There was early skepticism that HTTP could handle many concurrent live connections from a single client. The assumption was that clients can only hold a few HTTP connections open, which is a holdover from HTTP/1.1. We showed that limits did exist on some platforms, around 60 connections on iOS in our testing, but that was more than enough for our needs."
 
 ## 3:30 Decision and frontend architecture (45s)
 
@@ -46,7 +46,7 @@ The frontend architecture favored HTTP, and this was the deciding factor for me.
 
 "So we chose HTTP streams and took on the platform work. We patched the React Native polyfill and contributed the fix upstream.
 
-On the frontend, unary queries and subscriptions shared one pipeline: the same fetch, the same response wrapper, and the same middleware for authorization, retries and observability. The only difference was the parser at the start and whether the result resolved a promise or emitted to a Relay observable."
+On the frontend, unary queries and subscriptions shared one pipeline: the same fetch, the same response wrapper, and the same middleware. The only difference was the parser at the start and whether the result resolved a promise or emitted to a Relay observable."
 
 ## 4:15 Backend architecture (30s)
 
